@@ -18,7 +18,7 @@ VEL_STD = 0.1
 # Sampling directly from the target distribution, all particles have a weight of 1
 SAMPLE_FROM_TARGET_DISTRIBUTION = 0 
 LASER_POSE_OBV = []
-RESAMPLE_RATIO = 0.999
+RESAMPLE_RATIO = 1.0
 MEASURE_NOISE = np.array([
                 [sqrt(VEL_STD**2 + VEL_STD**2) / WHEEL_BASE, 0, 0],
                 [0, sqrt(VEL_STD**2 + VEL_STD**2)/2, 0],
@@ -259,8 +259,9 @@ def main(sample_num, particle_num):
         weight_list = [] # probability density value
         for j in range(particle_num):
             p = manager.particles_[j]
-            noise_r = np.random.normal(0, VEL_STD*0)
-            noise_l = np.random.normal(0, VEL_STD*0)
+            # 只有添加噪声，才能让粒子最终收敛，这一步是核心
+            noise_r = np.random.normal(0, VEL_STD)
+            noise_l = np.random.normal(0, VEL_STD)
             vr_j = vr + noise_r
             vl_j = vl + noise_l
 
@@ -276,8 +277,8 @@ def main(sample_num, particle_num):
         manager.UpdateParticleWeightsAndCurrentPose(weight_list)
 
         # Draw Current Result
-        if i % 20 == 0:
-            manager.DrawParticles(particle_true.pose_)
+        #if i % 20 == 0:
+        # manager.DrawParticles(particle_true.pose_)
         
         # resample
         if manager.NeedResample():
@@ -285,9 +286,10 @@ def main(sample_num, particle_num):
             manager.RouletteSelect()
     end_t = time.time()
     print("Filter spend time %.6f s"%(end_t - start_t))
+    manager.DrawParticles(particle_true.pose_)
     
 
 if __name__ == "__main__":
-    sample_num = 360
-    particle_num = 1000
+    sample_num = 1800
+    particle_num = 2000
     main(sample_num, particle_num)
