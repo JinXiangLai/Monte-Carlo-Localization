@@ -133,9 +133,9 @@ class ParticleManager:
 
         self.particles_ = []
         for i in range(particle_num):
-            theta = np.random.rand() * 2 * pi
-            pos_x = np.random.rand() * map.width_
-            pos_y = np.random.rand() * map.height_
+            theta = (2 * np.random.rand() - 1) * pi
+            pos_x = (2 * np.random.rand() - 1) * map.width_
+            pos_y = (2 * np.random.rand() - 1) * map.height_
             self.particles_.append( Particle(np.array([theta, pos_x, pos_y]), 1) )
             self.weights_.append(1)
     
@@ -193,14 +193,15 @@ class ParticleManager:
         # Normlize weights
         weight_list = np.array(weight_list) / np.sum(weight_list)
         for i in range(self.num_):
-            # self.particles_[i].weight_ *= weight_list[i]
-            self.particles_[i].weight_ = weight_list[i]
-            self.weights_[i] = weight_list[i]
+            self.particles_[i].weight_ *= weight_list[i]
+            # self.particles_[i].weight_ = weight_list[i]
+            self.weights_[i] = self.particles_[i].weight_
 
         self.NormlizeWeight()
         self.UpdateCurrentMeanPose()
 
     def CalculateWeight(self, true_pose : np.ndarray, pose : np.ndarray, measurement:list) -> float:
+        #这个方法行不通
         #R_wv = R_z(pose[0])
         #t_wv = pose[1:]
         #point_dist_diff = []
@@ -215,6 +216,7 @@ class ParticleManager:
         #    dist_diff.append(1.0 / np.linalg.norm(point_dist_diff[i]))
         #return sum(dist_diff)
         # 这里直接计算由激光雷达计算的位姿与我当前估算的位姿之间的差异
+        # 必须使用观测位姿进行直接更新才行，如同ESKF，都是需要我们给出状态量的残差才进行线性化类似
         pose_diff = true_pose - pose
         pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
         return pdv
@@ -239,6 +241,8 @@ class ParticleManager:
         plt.scatter(p_x, p_y, color='blue')
         plt.scatter(true_pose[1], true_pose[2], color='red')
         plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='YELLOW')
+        plt.xlim([-RADIUS, RADIUS])
+        plt.ylim([-RADIUS, RADIUS])
         plt.show(block=True)
 
 
@@ -250,7 +254,7 @@ def main(sample_num, particle_num):
 
     map = Map(RADIUS * 2, RADIUS * 2)
     
-    init_pose_true = np.array([0., RADIUS/2, RADIUS/2])
+    init_pose_true = np.array([0., RADIUS, 0])
     manager = ParticleManager(particle_num, map)
     particle_true = Particle(init_pose_true, 1.)
     
@@ -285,7 +289,7 @@ def main(sample_num, particle_num):
         manager.UpdateParticleWeightsAndCurrentPose(weight_list)
 
         # Draw Current Result
-        if i % 200 == 0:
+        if i % 50 == 0:
             manager.DrawParticles(particle_true.pose_)
         
         # resample
@@ -298,6 +302,6 @@ def main(sample_num, particle_num):
     
 
 if __name__ == "__main__":
-    sample_num = 1800
-    particle_num = 200
+    sample_num = 360
+    particle_num = 500
     main(sample_num, particle_num)
