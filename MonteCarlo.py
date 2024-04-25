@@ -18,7 +18,7 @@ VEL_STD = 0.1
 # Sampling directly from the target distribution, all particles have a weight of 1
 SAMPLE_FROM_TARGET_DISTRIBUTION = 0 
 LASER_POSE_OBV = []
-RESAMPLE_RATIO = 1.0
+RESAMPLE_RATIO = 0.9
 MEASURE_NOISE = np.array([
                 [sqrt(VEL_STD**2 + VEL_STD**2) / WHEEL_BASE, 0, 0],
                 [0, sqrt(VEL_STD**2 + VEL_STD**2)/2, 0],
@@ -193,8 +193,8 @@ class ParticleManager:
         # Normlize weights
         weight_list = np.array(weight_list) / np.sum(weight_list)
         for i in range(self.num_):
-            #self.particles_[i].weight_ *= weight_list[i]
-            self.particles_[i].weight_ = weight_list[i]
+            self.particles_[i].weight_ *= weight_list[i]
+            #self.particles_[i].weight_ = weight_list[i]
 
         self.NormlizeWeight()
         self.UpdateCurrentMeanPose()
@@ -209,10 +209,10 @@ class ParticleManager:
             point_dist_diff.append(diff)
 
         # 权重定义为距离和倒数是否合理？
-        sum_dist_diff = 0.
+        dist_diff = []
         for i in range(self.map_.landmark_num_):
-            sum_dist_diff += np.linalg.norm(point_dist_diff[i]) 
-        return 1. / sum_dist_diff
+            dist_diff.append(1.0 / np.linalg.norm(point_dist_diff[i]))
+        return sum(dist_diff)
 
     def GenerateTrueMeasurement(self, true_pose:np.ndarray) -> list:
         R_vw =  R_z(true_pose[0]).transpose()
