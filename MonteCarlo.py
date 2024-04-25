@@ -18,7 +18,7 @@ VEL_STD = 0.1
 # Sampling directly from the target distribution, all particles have a weight of 1
 SAMPLE_FROM_TARGET_DISTRIBUTION = 0 
 LASER_POSE_OBV = []
-RESAMPLE_RATIO = 0.9
+RESAMPLE_RATIO = 0.5
 MEASURE_NOISE = np.array([
                 [sqrt(VEL_STD**2 + VEL_STD**2) / WHEEL_BASE, 0, 0],
                 [0, sqrt(VEL_STD**2 + VEL_STD**2)/2, 0],
@@ -193,26 +193,33 @@ class ParticleManager:
         # Normlize weights
         weight_list = np.array(weight_list) / np.sum(weight_list)
         for i in range(self.num_):
-            self.particles_[i].weight_ *= weight_list[i]
-            #self.particles_[i].weight_ = weight_list[i]
+            # self.particles_[i].weight_ *= weight_list[i]
+            self.particles_[i].weight_ = weight_list[i]
+            self.weights_[i] = weight_list[i]
 
         self.NormlizeWeight()
         self.UpdateCurrentMeanPose()
 
-    def CalculateWeight(self, pose : np.ndarray, measurement:list) -> float:
-        R_wv = R_z(pose[0])
-        t_wv = pose[1:]
-        point_dist_diff = []
-        for i in range(self.map_.landmark_num_):
-            p = R_wv @ measurement[i] + t_wv
-            diff = self.map_.landmarks_ - p
-            point_dist_diff.append(diff)
+    def CalculateWeight(self, true_pose : np.ndarray, pose : np.ndarray, measurement:list) -> float:
+        #R_wv = R_z(pose[0])
+        #t_wv = pose[1:]
+        #point_dist_diff = []
+        #for i in range(self.map_.landmark_num_):
+        #    p = R_wv @ measurement[i] + t_wv
+        #    diff = self.map_.landmarks_ - p
+        #    point_dist_diff.append(diff)
 
-        # 权重定义为距离和倒数是否合理？
-        dist_diff = []
-        for i in range(self.map_.landmark_num_):
-            dist_diff.append(1.0 / np.linalg.norm(point_dist_diff[i]))
-        return sum(dist_diff)
+        ## 权重定义为距离和倒数是否合理？
+        #dist_diff = []
+        #for i in range(self.map_.landmark_num_):
+        #    dist_diff.append(1.0 / np.linalg.norm(point_dist_diff[i]))
+        #return sum(dist_diff)
+        # 这里直接计算由激光雷达计算的位姿与我当前估算的位姿之间的差异
+        pose_diff = true_pose - pose
+        pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
+        return pdv
+
+        
 
     def GenerateTrueMeasurement(self, true_pose:np.ndarray) -> list:
         R_vw =  R_z(true_pose[0]).transpose()
@@ -231,6 +238,7 @@ class ParticleManager:
             p_y.append(self.particles_[i].pose_[2])
         plt.scatter(p_x, p_y, color='blue')
         plt.scatter(true_pose[1], true_pose[2], color='red')
+        plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='YELLOW')
         plt.show(block=True)
 
 
@@ -269,7 +277,7 @@ def main(sample_num, particle_num):
             p.Predict(vr_j, vl_j, SAMPLE_TIME)
 
             # predict weight
-            weight = manager.CalculateWeight(p.pose_, measurement)
+            weight = manager.CalculateWeight(particle_true.pose_, p.pose_, measurement)
             weight_list.append(weight)
 
         
@@ -277,8 +285,8 @@ def main(sample_num, particle_num):
         manager.UpdateParticleWeightsAndCurrentPose(weight_list)
 
         # Draw Current Result
-        #if i % 20 == 0:
-        # manager.DrawParticles(particle_true.pose_)
+        if i % 200 == 0:
+            manager.DrawParticles(particle_true.pose_)
         
         # resample
         if manager.NeedResample():
@@ -291,5 +299,5 @@ def main(sample_num, particle_num):
 
 if __name__ == "__main__":
     sample_num = 1800
-    particle_num = 2000
+    particle_num = 200
     main(sample_num, particle_num)
