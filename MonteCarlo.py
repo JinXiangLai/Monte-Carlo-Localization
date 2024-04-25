@@ -124,12 +124,14 @@ class Map:
 
 
 class ParticleManager:
-    def __init__(self, particle_num:int, map: Map) -> None:
+    def __init__(self, particle_num:int, map: Map, true_particle:Particle) -> None:
         self.weights_ = []
         self.traj_ = []
         self.num_ = particle_num
         self.max_resample_threshold_ = self.num_ * RESAMPLE_RATIO
         self.map_ = map
+        self.true_particle_ = true_particle
+        self.true_traj_ = []
 
         self.particles_ = []
         for i in range(particle_num):
@@ -194,6 +196,7 @@ class ParticleManager:
         weight_list = np.array(weight_list) / np.sum(weight_list)
         for i in range(self.num_):
             self.particles_[i].weight_ *= weight_list[i]
+            # 这个完全不行
             # self.particles_[i].weight_ = weight_list[i]
             self.weights_[i] = self.particles_[i].weight_
 
@@ -207,23 +210,25 @@ class ParticleManager:
         #point_dist_diff = []
         #for i in range(self.map_.landmark_num_):
         #    p = R_wv @ measurement[i] + t_wv
-        #    diff = self.map_.landmarks_ - p
+        #    diff = self.map_.landmarks_[i] - p
         #    point_dist_diff.append(diff)
 
         ## 权重定义为距离和倒数是否合理？
         #dist_diff = []
         #for i in range(self.map_.landmark_num_):
-        #    dist_diff.append(1.0 / np.linalg.norm(point_dist_diff[i]))
-        #return sum(dist_diff)
+        #    dist_diff.append(np.linalg.norm(point_dist_diff[i]))
+        #return 1.0 / sum(dist_diff)
         # 这里直接计算由激光雷达计算的位姿与我当前估算的位姿之间的差异
-        # 必须使用观测位姿进行直接更新才行，如同ESKF，都是需要我们给出状态量的残差才进行线性化类似
+        # 必须使用观测位姿进行直接更新才行
         pose_diff = true_pose - pose
-        pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
-        return pdv
+        return 1./np.linalg.norm(pose_diff)
+        #pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
+        #return pdv
 
         
 
-    def GenerateTrueMeasurement(self, true_pose:np.ndarray) -> list:
+    def GenerateTrueMeasurement(self) -> list:
+        true_pose = self.true_particle_ .pose_
         R_vw =  R_z(true_pose[0]).transpose()
         t_vw = -R_vw @ true_pose[1:]
         measurement = []
@@ -239,10 +244,13 @@ class ParticleManager:
             p_x.append(self.particles_[i].pose_[1])
             p_y.append(self.particles_[i].pose_[2])
         plt.scatter(p_x, p_y, color='blue')
+        plt.legend("particles")
         plt.scatter(true_pose[1], true_pose[2], color='red')
+        plt.legend("true")
         plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='YELLOW')
         plt.xlim([-RADIUS, RADIUS])
         plt.ylim([-RADIUS, RADIUS])
+        plt.legend(["samples", "true", "mean"])
         plt.show(block=True)
 
 
@@ -255,8 +263,9 @@ def main(sample_num, particle_num):
     map = Map(RADIUS * 2, RADIUS * 2)
     
     init_pose_true = np.array([0., RADIUS, 0])
-    manager = ParticleManager(particle_num, map)
     particle_true = Particle(init_pose_true, 1.)
+    manager = ParticleManager(particle_num, map, particle_true)
+    
     
     start_t = time.time()
 
@@ -265,7 +274,7 @@ def main(sample_num, particle_num):
         vr = vr_list[i]
         vl = vl_list[i]
         particle_true.Predict(vr, vl, SAMPLE_TIME)
-        measurement = manager.GenerateTrueMeasurement(particle_true.pose_)
+        measurement = manager.GenerateTrueMeasurement()
         # 给测量添加上噪声
 
         weight_list = [] # probability density value
