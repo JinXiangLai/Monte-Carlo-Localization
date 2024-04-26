@@ -12,3 +12,5 @@ step 60:
 
 step 80:
 ![image](https://github.com/JinXiangLai/Monte-Carlo/assets/62703436/04fc3464-287f-46e7-84d7-cecbe0a1d253)
+
+Hope this help!
