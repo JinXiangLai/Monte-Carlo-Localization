@@ -237,10 +237,10 @@ class ParticleManager:
         plt.legend("particles")
         plt.scatter(self.true_traj_[-1][1], self.true_traj_[-1][2], color='red')
         plt.legend("true")
-        plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='YELLOW')
-        plt.xlim([-RADIUS, RADIUS])
-        plt.ylim([-RADIUS, RADIUS])
-        plt.legend(["samples", "true", "mean"])
+        plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='green')
+        plt.xlim([-(RADIUS + 0.5), (RADIUS + 0.5)])
+        plt.ylim([-(RADIUS + 0.5), (RADIUS + 0.5)])
+        plt.legend(["samples", "true", "mean"], loc='upper left')
         plt.show()
 
 
