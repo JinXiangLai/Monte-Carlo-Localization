@@ -15,11 +15,9 @@ SAMPLE_TIME = 0.05 # ms
 RADIUS = 1.0 # m
 DEGREE2RAD = pi / 180
 VEL_STD = 0.1
-# Sampling directly from the target distribution, all particles have a weight of 1
-SAMPLE_FROM_TARGET_DISTRIBUTION = 0 
 LASER_POSE_OBV = []
 RESAMPLE_RATIO = 0.5
-USE_DISTANCE_DIFF_TO_UPDATE_WEIGHT = 1
+USE_DISTANCE_DIFF_TO_UPDATE_WEIGHT = 0
 MEASURE_NOISE = np.array([
                 [sqrt(VEL_STD**2 + VEL_STD**2) / WHEEL_BASE, 0, 0],
                 [0, sqrt(VEL_STD**2 + VEL_STD**2)/2, 0],
@@ -234,6 +232,7 @@ class ParticleManager:
         for i in range(self.num_):
             p_x.append(self.particles_[i].pose_[1])
             p_y.append(self.particles_[i].pose_[2])
+        
         plt.scatter(p_x, p_y, color='blue')
         plt.legend("particles")
         plt.scatter(self.true_traj_[-1][1], self.true_traj_[-1][2], color='red')
@@ -242,7 +241,7 @@ class ParticleManager:
         plt.xlim([-RADIUS, RADIUS])
         plt.ylim([-RADIUS, RADIUS])
         plt.legend(["samples", "true", "mean"])
-        plt.show(block=True)
+        plt.show()
 
 
 def main(sample_num, particle_num):
@@ -291,7 +290,7 @@ def main(sample_num, particle_num):
         manager.UpdateParticleWeightsAndCurrentPose(weight_list)
 
         # Draw Current Result
-        if i % 50 == 0:
+        if i % 20 == 0:
             manager.DrawParticles()
         
         # resample
