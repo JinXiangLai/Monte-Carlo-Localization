@@ -1,5 +1,5 @@
 # -*- coding: UTF-8 -*-
-# * Particle Filter realized by JinXiangLai at 2024-04-24 22:10
+# * Monte Carlo Localization realized by JinXiangLai at 2024-04-25 00:15
 
 from turtle import color
 import numpy as np
@@ -19,6 +19,7 @@ VEL_STD = 0.1
 SAMPLE_FROM_TARGET_DISTRIBUTION = 0 
 LASER_POSE_OBV = []
 RESAMPLE_RATIO = 0.5
+USE_DISTANCE_DIFF_TO_UPDATE_WEIGHT = 1
 MEASURE_NOISE = np.array([
                 [sqrt(VEL_STD**2 + VEL_STD**2) / WHEEL_BASE, 0, 0],
                 [0, sqrt(VEL_STD**2 + VEL_STD**2)/2, 0],
@@ -72,12 +73,12 @@ def SampleCircle(sample_num, vr_list:list, vl_list:list):
 
 
 # Generate ground truth pose for update progress
-def GenerateCircle(vr_list:list, vl_list:list):
-    theta = 0 * DEGREE2RAD
+def GenerateCircle(vr_list:list, vl_list:list, init_pose = np.array([0, RADIUS, 0])):
+    theta = init_pose[0]
     data_num = len(vr_list)
-    x_list = [RADIUS]
-    y_list = [0]
-    p_w_last = np.array([RADIUS, 0])
+    x_list = [init_pose[1]]
+    y_list = [init_pose[2]]
+    p_w_last = np.array(init_pose[1:])
     for i in range(data_num):
         v = (vr_list[i] + vl_list[i]) / 2
         v_y = np.array([0, v])
@@ -108,10 +109,6 @@ class Particle:
         self.pose_[1:] += R_z(self.pose_[0]) @ v_y * dt
         self.pose_[0] +=  w * dt
 
-    def Update(self, measurement, landmark) -> None:
-        # 需要根据地图点来更新pose???
-        pass
-
 
 class Map:
     def __init__(self, w:float, h:float) -> None:
@@ -119,7 +116,7 @@ class Map:
         self.height_ = h
         self.landmarks_ = [np.array([-w, -h]), np.array([w, -h]),
                             np.array([w, h]), np.array([-w, h])]
-        # 为了简单起见，假定机器人都能按顺序观测到4个地图点
+        # Simply, we assume that the robot can observe thr four landmarks in sequence
         self.landmark_num_ = len(self.landmarks_)
 
 
@@ -133,6 +130,7 @@ class ParticleManager:
         self.true_particle_ = true_particle
         self.true_traj_ = []
 
+        # generate uniform random seeds
         self.particles_ = []
         for i in range(particle_num):
             theta = (2 * np.random.rand() - 1) * pi
@@ -149,10 +147,6 @@ class ParticleManager:
            self.weights_[i] =  new_weight
     
     def NormlizeWeight(self) -> None:
-        diff = abs(np.sum(self.weights_) - 1.0)
-        if diff > 1e-20 and diff < 1e-19:
-            return
-            
         for i in range(self.num_):
             self.weights_[i] = self.particles_[i].weight_
         self.weights_ = np.array(self.weights_) / np.sum(self.weights_)
@@ -165,6 +159,7 @@ class ParticleManager:
         for i in range(self.num_):
             pose += self.particles_[i].pose_ * self.weights_[i] 
         self.traj_.append(pose)
+        self.true_traj_.append(self.true_particle_.pose_)
     
     def NeedResample(self) -> bool:
         sum_square_weight = 0
@@ -196,7 +191,7 @@ class ParticleManager:
         weight_list = np.array(weight_list) / np.sum(weight_list)
         for i in range(self.num_):
             self.particles_[i].weight_ *= weight_list[i]
-            # 这个完全不行
+            # Can't use current weight as the weight of the particle
             # self.particles_[i].weight_ = weight_list[i]
             self.weights_[i] = self.particles_[i].weight_
 
@@ -204,28 +199,24 @@ class ParticleManager:
         self.UpdateCurrentMeanPose()
 
     def CalculateWeight(self, true_pose : np.ndarray, pose : np.ndarray, measurement:list) -> float:
-        #这个方法行不通
-        #R_wv = R_z(pose[0])
-        #t_wv = pose[1:]
-        #point_dist_diff = []
-        #for i in range(self.map_.landmark_num_):
-        #    p = R_wv @ measurement[i] + t_wv
-        #    diff = self.map_.landmarks_[i] - p
-        #    point_dist_diff.append(diff)
+        if USE_DISTANCE_DIFF_TO_UPDATE_WEIGHT:
+            R_wv = R_z(pose[0])
+            t_wv = pose[1:]
+            point_dist_diff = []
+            for i in range(self.map_.landmark_num_):
+                p = R_wv @ measurement[i] + t_wv
+                diff = self.map_.landmarks_[i] - p
+                point_dist_diff.append(diff)
 
-        ## 权重定义为距离和倒数是否合理？
-        #dist_diff = []
-        #for i in range(self.map_.landmark_num_):
-        #    dist_diff.append(np.linalg.norm(point_dist_diff[i]))
-        #return 1.0 / sum(dist_diff)
-        # 这里直接计算由激光雷达计算的位姿与我当前估算的位姿之间的差异
-        # 必须使用观测位姿进行直接更新才行
-        pose_diff = true_pose - pose
-        return 1./np.linalg.norm(pose_diff)
-        #pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
-        #return pdv
-
-        
+            dist_diff = []
+            for i in range(self.map_.landmark_num_):
+                dist_diff.append(np.linalg.norm(point_dist_diff[i]))
+            return 1.0 / sum(dist_diff)
+        else:
+            pose_diff = true_pose - pose
+            return 1.0 / np.linalg.norm(pose_diff)
+            #pdv = multivariate_normal.pdf(pose_diff, np.zeros(3), MEASURE_NOISE)
+            #return pdv
 
     def GenerateTrueMeasurement(self) -> list:
         true_pose = self.true_particle_ .pose_
@@ -237,7 +228,7 @@ class ParticleManager:
             measurement.append(p)
         return measurement
 
-    def DrawParticles(self, true_pose) -> None:
+    def DrawParticles(self) -> None:
         p_x = []
         p_y = []
         for i in range(self.num_):
@@ -245,7 +236,7 @@ class ParticleManager:
             p_y.append(self.particles_[i].pose_[2])
         plt.scatter(p_x, p_y, color='blue')
         plt.legend("particles")
-        plt.scatter(true_pose[1], true_pose[2], color='red')
+        plt.scatter(self.true_traj_[-1][1], self.true_traj_[-1][2], color='red')
         plt.legend("true")
         plt.scatter(self.traj_[-1][1], self.traj_[-1][2], color='YELLOW')
         plt.xlim([-RADIUS, RADIUS])
@@ -255,32 +246,34 @@ class ParticleManager:
 
 
 def main(sample_num, particle_num):
+    init_pose_true = np.array([0., RADIUS, 0])
     vr_list = []
     vl_list = []
     SampleCircle(sample_num, vr_list, vl_list)
-    GenerateCircle(vr_list, vl_list)
+    GenerateCircle(vr_list, vl_list, init_pose_true)
 
     map = Map(RADIUS * 2, RADIUS * 2)
-    
-    init_pose_true = np.array([0., RADIUS, 0])
     particle_true = Particle(init_pose_true, 1.)
     manager = ParticleManager(particle_num, map, particle_true)
     
     
     start_t = time.time()
-
     # predict pose and update weight
     for i in range(sample_num):
         vr = vr_list[i]
         vl = vl_list[i]
         particle_true.Predict(vr, vl, SAMPLE_TIME)
         measurement = manager.GenerateTrueMeasurement()
-        # 给测量添加上噪声
+        # add noise to the measurement
+        for k in range(map.landmark_num_):
+            x = np.random.normal(0, 0.05)
+            y = np.random.normal(0, 0.05)
+            measurement[k] += np.array([x, y])
 
         weight_list = [] # probability density value
         for j in range(particle_num):
             p = manager.particles_[j]
-            # 只有添加噪声，才能让粒子最终收敛，这一步是核心
+            # We must add noise to the wheel speed, or the algorithm can't converage
             noise_r = np.random.normal(0, VEL_STD)
             noise_l = np.random.normal(0, VEL_STD)
             vr_j = vr + noise_r
@@ -299,7 +292,7 @@ def main(sample_num, particle_num):
 
         # Draw Current Result
         if i % 50 == 0:
-            manager.DrawParticles(particle_true.pose_)
+            manager.DrawParticles()
         
         # resample
         if manager.NeedResample():
@@ -307,7 +300,7 @@ def main(sample_num, particle_num):
             manager.RouletteSelect()
     end_t = time.time()
     print("Filter spend time %.6f s"%(end_t - start_t))
-    manager.DrawParticles(particle_true.pose_)
+    manager.DrawParticles()
     
 
 if __name__ == "__main__":
